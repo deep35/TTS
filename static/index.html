@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text-to-Speech Service</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        textarea, select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 120px;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .audio-container {
+            margin-top: 30px;
+            text-align: center;
+            display: none;
+        }
+        .audio-container audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: #4CAF50;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Text-to-Speech Service</h1>
+        
+        <div class="form-group">
+            <label for="text">Enter text to convert to speech:</label>
+            <textarea id="text" placeholder="Type your text here..."></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="voice">Select voice:</label>
+            <select id="voice">
+                <option value="af_bella">Bella (African)</option>
+                <!-- More voices will be loaded dynamically -->
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="speed">Speech speed: <span id="speedValue">0.9</span></label>
+            <input type="range" id="speed" min="0.5" max="1.5" step="0.1" value="0.9">
+        </div>
+        
+        <button id="convertBtn">Convert to Speech</button>
+        
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Generating audio...</p>
+        </div>
+        
+        <div id="error" class="error"></div>
+        
+        <div id="audioContainer" class="audio-container">
+            <p>Your generated audio:</p>
+            <audio id="audioPlayer" controls></audio>
+            <p class="status">You can play or download this audio file.</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            const textArea = document.getElementById('text');
+            const voiceSelect = document.getElementById('voice');
+            const speedSlider = document.getElementById('speed');
+            const speedValue = document.getElementById('speedValue');
+            const convertBtn = document.getElementById('convertBtn');
+            const audioContainer = document.getElementById('audioContainer');
+            const audioPlayer = document.getElementById('audioPlayer');
+            const errorElement = document.getElementById('error');
+            const loading = document.querySelector('.loading');
+            
+            // Update the speed value display when slider changes
+            speedSlider.addEventListener('input', function() {
+                speedValue.textContent = this.value;
+            });
+            
+            // Fetch available voices (this would connect to your /voices/ endpoint)
+            fetch('/voices/')
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to fetch voices');
+                    return response.json();
+                })
+                .then(data => {
+                    // Clear default option
+                    voiceSelect.innerHTML = '';
+                    
+                    // Add voices to select dropdown
+                    data.voices.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice;
+                        option.textContent = voice;
+                        // Set default voice
+                        if (voice === data.default) {
+                            option.selected = true;
+                        }
+                        voiceSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching voices:', error);
+                    // If we can't fetch voices, at least keep the default one
+                });
+            
+            // Handle the text-to-speech conversion
+            convertBtn.addEventListener('click', function() {
+                const text = textArea.value.trim();
+                
+                // Validate input
+                if (!text) {
+                    errorElement.textContent = 'Please enter some text to convert';
+                    return;
+                }
+                
+                errorElement.textContent = '';
+                audioContainer.style.display = 'none';
+                loading.style.display = 'block';
+                convertBtn.disabled = true;
+                
+                // Prepare the request data
+                const requestData = {
+                    text: text,
+                    voice: voiceSelect.value,
+                    speed: parseFloat(speedSlider.value)
+                };
+                
+                // Make API request to the TTS endpoint
+                fetch('/tts/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.detail || 'Failed to generate speech');
+                        });
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // Create URL for the audio blob
+                    const audioUrl = URL.createObjectURL(blob);
+                    audioPlayer.src = audioUrl;
+                    
+                    // Display the audio player
+                    audioContainer.style.display = 'block';
+                    
+                    // Auto play (may be blocked by browsers)
+                    audioPlayer.play().catch(e => console.log('Auto-play prevented'));
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    errorElement.textContent = error.message || 'An error occurred while generating speech';
+                })
+                .finally(() => {
+                    loading.style.display = 'none';
+                    convertBtn.disabled = false;
+                });
+            });
+        });
+    </script>
+</body>
+</html>
